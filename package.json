@@ -9,9 +9,10 @@
     "map": "bash tools/build-map.sh",
     "project": "node tools/project.mjs",
     "verify": "node tools/verify.mjs",
-    "build": "npm run fetch && npm run map && npm run project && npm run verify",
+    "build": "npm run fetch && npm run map && npm run project && npm run verify && npm run bundle",
     "test": "playwright test",
-    "serve": "python3 -m http.server 8123"
+    "serve": "python3 -m http.server 8123",
+    "bundle": "node tools/bundle.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

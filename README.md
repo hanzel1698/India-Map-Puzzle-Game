@@ -5,9 +5,27 @@ the map; it snaps home, says its own name out loud, and goes in the sticker book
 
 ![The game at level one](./docs/screenshot-level1.png)
 
-**Play it:** open `index.html`. That is the whole install. Double-click the file,
-or host the folder anywhere static — there is no build step, no bundler and no
-runtime dependencies.
+## Playing it — three ways
+
+| Where | What to open |
+|---|---|
+| **Tablet or phone** | `dist/india-map-puzzle.html` — one self-contained file. Copy it to the device and open it **in Chrome**. |
+| **Desktop** | `index.html` from the project folder. Double-click it; that is the whole install. |
+| **Hosted** | Any static host. GitHub Pages serves it from `main` / `/ (root)`. |
+
+**On Android, do not tap the `.html` file in a file manager.** The manager hands
+it to a preview WebView that disables JavaScript, and often copies just that one
+file into a cache directory — so `./js/` and `./data/` are not merely blocked,
+they are absent. You get the header and a blank page. Use *Open with → Chrome*,
+or type the path into Chrome directly:
+`file:///storage/emulated/0/Download/india-map-puzzle.html`.
+
+That is exactly what `dist/india-map-puzzle.html` is for: with everything inlined,
+there are no sibling files left to lose. Regenerate it with `npm run bundle`.
+iOS has no good local-file story at all — host it instead.
+
+There is no build step, no bundler and no runtime dependencies in any of the
+three cases.
 
 ---
 
@@ -52,8 +70,8 @@ That one constraint decided almost everything here.
 ## How it is put together
 
 ```
-index.html          the game
-stickers.html       the sticker book
+index.html          the whole game, sticker book included
+dist/               GENERATED single-file build (npm run bundle)
 css/styles.css
 data/states.js      GENERATED map data, ~56 KB -- see "Regenerating" below
 js/
@@ -66,7 +84,7 @@ js/
   render.js         builds the board SVG and the tray tiles
   drag.js           Pointer Events, the drag ghost, the snap test
   game.js           levels, tray queue, wiring
-  stickers.js
+  stickers.js       sticker-book overlay
 tools/              build-time only, never shipped to the browser
 tests/              Playwright
 ```

@@ -321,6 +321,39 @@ body {
   z-index: 55;
 }
 
+/* ---------- Sticker book ----------
+   Shares the .win overlay chrome. The card scrolls, because thirty-nine slots
+   will not fit on a tablet in landscape. */
+
+.book-card {
+  /* width:100% matters. The overlay centres its card with place-items, which
+     makes the card shrink-to-fit -- and inside a shrink-to-fit box the grid's
+     1fr columns have no definite width, so auto-fill collapses to one column
+     and the stickers balloon. Giving it a definite width fixes both. */
+  width: 100%;
+  max-width: 620px;
+  max-height: 84dvh;
+  overflow-y: auto;
+  text-align: left;
+}
+.book-card h2 { text-align: center; }
+.book-h {
+  margin: 14px 0 2px;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+}
+.book-card .big-btn { display: block; margin: 8px auto 0; }
+
+.win-link {
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 /* ---------- Sticker book ---------- */
 
 .book {
@@ -340,9 +373,9 @@ body.book-page {
 
 .sticker-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-  gap: 12px;
-  margin-bottom: 26px;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
 }
 
 .sticker {

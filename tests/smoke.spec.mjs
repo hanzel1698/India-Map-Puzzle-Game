@@ -9,6 +9,8 @@
 import { test, expect } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { copyFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FILE_URL = 'file://' + join(REPO, 'index.html');
@@ -270,11 +272,17 @@ test('finishing a level wins a trophy that survives a reload', async ({ page }) 
   );
   expect(after).toContain('trophy-1');
 
-  await page.goto('file://' + join(REPO, 'stickers.html'));
+  // The sticker book is an overlay on the same page, not a second document.
+  await page.locator('#open-stickers').click();
+  await expect(page.locator('#book')).toBeVisible();
   await expect(page.locator('.sticker.earned').first()).toBeVisible();
   const earned = await page.locator('.sticker.earned').count();
   expect(earned).toBeGreaterThanOrEqual(7);
-  await page.screenshot({ path: join(SHOTS, 'stickers.png'), fullPage: true });
+  await expect(page.locator('#book .sticker')).toHaveCount(39);  // 36 states + 3 trophies
+  await page.screenshot({ path: join(SHOTS, 'stickers.png') });
+
+  await page.locator('#close-book').click();
+  await expect(page.locator('#book')).toBeHidden();
 });
 
 // ---------------------------------------------------------------------------
@@ -363,4 +371,50 @@ test('lays out on laptop, tablet landscape and tablet portrait', async ({ browse
     }
     await context.close();
   }
+});
+
+// ---------------------------------------------------------------------------
+
+test('the single-file build works with no sibling files at all', async ({ page }) => {
+  /* This is the Android case, reproduced honestly. Tapping an .html file in an
+     Android file manager can copy just that one file into a cache directory, so
+     ./js/ and ./data/ are not blocked -- they are absent. Copying the bundle
+     alone into an empty temp directory is exactly that situation. */
+  const solo = mkdtempSync(join(tmpdir(), 'imp-solo-'));
+  const target = join(solo, 'india-map-puzzle.html');
+  copyFileSync(join(REPO, 'dist', 'india-map-puzzle.html'), target);
+
+  const errors = watchErrors(page);
+  const failedRequests = [];
+  page.on('requestfailed', (r) => failedRequests.push(r.url()));
+  page.on('response', (r) => {
+    if (r.status() >= 400) failedRequests.push(r.status() + ' ' + r.url());
+  });
+
+  await page.goto('file://' + target);
+
+  await expect(page.locator('#board')).toBeVisible();
+  await expect(page.locator('.tile')).toHaveCount(6);
+  expect(await page.evaluate(() => window.INDIA_MAP.states.length)).toBe(36);
+  expect(await page.locator('#g-slots .slot').count()).toBe(6);
+
+  // A real drag must still place a piece.
+  const id = await firstTrayId(page);
+  const from = await tilePoint(page, id);
+  const to = await slotPoint(page, id);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y);
+  await page.mouse.up();
+  await expect(page.locator(`path.placed[data-id="${id}"]`)).toHaveAttribute('opacity', '1');
+
+  // And the sticker book, which is why it had to stop being a second page.
+  await page.locator('#open-stickers').click();
+  await expect(page.locator('#book')).toBeVisible();
+  await expect(page.locator('#book .sticker')).toHaveCount(39);
+
+  expect(failedRequests).toEqual([]);
+  expect(errors).toEqual([]);
+
+  await page.screenshot({ path: join(SHOTS, 'single-file.png') });
 });
