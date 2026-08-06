@@ -3,9 +3,13 @@ name: Deploy to GitHub Pages
 # The site is plain static files -- no build step -- so this just uploads the
 # repository as-is and hands it to Pages.
 
+# main only. The feature branch carries the same commits, and deploying both
+# into one Pages site achieves nothing except contending for the concurrency
+# group below -- and the github-pages environment only accepts the default
+# branch anyway, so the non-default run would sit waiting and block the queue.
 on:
   push:
-    branches: [main, claude/india-map-puzzle-game-3usn0u]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
