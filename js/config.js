@@ -32,6 +32,38 @@
     PIECE_PAD: 10,   // viewBox units of margin around a piece in the tray/ghost
     STROKE: 7,       // white jigsaw border width, viewBox units
 
+    /* Speech.
+     *
+     * The phrases matter more than the settings. Handed a bare word, every TTS
+     * engine falls back to citation form -- level pitch, no contour, hard stop,
+     * which is exactly what "robotic" means. Give it a short punctuated phrase
+     * and it applies a sentence intonation contour instead. Rotating the
+     * wording stops the repetition from flattening it out again.
+     *
+     * These are data so the tone can be retuned without touching any logic.
+     */
+    SPEECH: {
+      RATE: 0.9,     // full phrases drag at 0.85; still slow enough to follow
+      PITCH: 1.05,   // 1.1 reads thin and chirpy, which itself sounds synthetic
+
+      // Short: the child triggers this constantly, and it gets cut off the
+      // moment they grab the next piece. Even a lone name gains a falling
+      // contour from the full stop.
+      PICKUP: ['{name}.', '{name}.', 'This is {name}.'],
+
+      // Where the warmth belongs -- this one only fires on success.
+      PLACED: [
+        'Yes! {name}.',
+        '{name}. Well done!',
+        "That's right. {name}!",
+        'Good one! {name}.',
+        'Perfect. {name}!',
+      ],
+
+      WIN: ['Well done!', 'Brilliant!', 'You did it!'],
+      WIN_ALL: ['You finished all of India!', 'The whole map! Amazing!'],
+    },
+
     // Emoji come from the system font. If a device has no colour-emoji font they
     // render as tofu boxes -- flip this off and pieces fall back to name only.
     USE_EMOJI: true,

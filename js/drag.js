@@ -92,7 +92,7 @@
     move(e);
 
     IMP.audio.playPickup();
-    IMP.speech.say(state.say);
+    IMP.speech.sayState(state, 'PICKUP');
 
     tile.addEventListener('pointermove', onMove);
     tile.addEventListener('pointerup', onUp);

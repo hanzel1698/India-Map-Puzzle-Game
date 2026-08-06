@@ -464,3 +464,133 @@ test('all six tray pieces fit on screen, with nothing clipped', async ({ browser
     await context.close();
   }
 });
+
+// ---------------------------------------------------------------------------
+
+/** Replace speechSynthesis with a recorder before any page script runs. */
+async function stubSpeech(page, voices) {
+  await page.addInitScript((voiceList) => {
+    window.__utts = [];
+    window.SpeechSynthesisUtterance = function (text) {
+      this.text = text;
+      this.rate = 1;
+      this.pitch = 1;
+      this.volume = 1;
+    };
+    const stub = {
+      getVoices: () => voiceList,
+      speak: (u) =>
+        window.__utts.push({
+          text: u.text,
+          rate: u.rate,
+          pitch: u.pitch,
+          voice: u.voice && u.voice.name,
+        }),
+      cancel: () => {},
+      addEventListener: () => {},
+    };
+    Object.defineProperty(window, 'speechSynthesis', {
+      value: stub, configurable: true, writable: true,
+    });
+  }, voices);
+}
+
+const IN_LOCAL = { name: 'IN Local', lang: 'en-IN', localService: true, default: true };
+const IN_NET = { name: 'IN Network', lang: 'en-IN', localService: false, default: false };
+const US_NET = { name: 'US Network', lang: 'en-US', localService: false, default: false };
+
+/** Everything actually spoken, ignoring the silent iOS unlock utterance. */
+const spoken = (page) =>
+  page.evaluate(() => window.__utts.filter((u) => u.text && u.text.trim()));
+
+test.describe('speech', () => {
+  test('a state sounds the same picked up as placed', async ({ page }) => {
+    await stubSpeech(page, [IN_LOCAL, IN_NET]);
+    await page.goto(FILE_URL);
+
+    // Maharashtra is respelled "Ma-ha-rash-tra"; it is always in level 1.
+    const id = 'MH';
+    const from = await tilePoint(page, id);
+    const to = await slotPoint(page, id);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y);
+    await page.mouse.up();
+    await expect(page.locator(`path.placed[data-id="${id}"]`)).toHaveAttribute('opacity', '1');
+
+    const utts = await spoken(page);
+    expect(utts.length).toBeGreaterThanOrEqual(2);
+
+    // Both the pick-up and the placement must use the respelling, never the raw
+    // spelling -- otherwise one shape carries two different sounds.
+    for (const u of utts) {
+      expect(u.text).toContain('Ma-ha-rash-tra');
+      expect(u.text).not.toMatch(/\bMaharashtra\b/);
+    }
+  });
+
+  test('speaks phrases, not bare words', async ({ page }) => {
+    await stubSpeech(page, [IN_NET]);
+    await page.goto(FILE_URL);
+
+    for (let i = 0; i < 4; i++) {
+      await page.locator('.tile').first().focus();
+      await page.keyboard.press('Enter');
+    }
+
+    const utts = await spoken(page);
+    expect(utts.length).toBeGreaterThanOrEqual(4);
+
+    for (const u of utts) {
+      // A punctuated phrase is what makes an engine apply a sentence contour
+      // instead of flat citation form.
+      expect(u.text.trim()).toMatch(/[.!?]$/);
+      expect(u.rate).toBeCloseTo(0.9, 2);
+      expect(u.pitch).toBeCloseTo(1.05, 2);
+    }
+
+    // Placements are praise plus a name, so more than one word.
+    expect(utts.some((u) => u.text.trim().split(/\s+/).length > 1)).toBe(true);
+  });
+
+  test('does not use the same wording twice in a row', async ({ page }) => {
+    await stubSpeech(page, [IN_NET]);
+    await page.goto(FILE_URL);
+
+    for (let i = 0; i < 6; i++) {
+      await page.locator('.tile').first().focus();
+      await page.keyboard.press('Enter');
+    }
+
+    const utts = await spoken(page);
+    // Strip the state name so only the template shape remains.
+    const shapes = utts
+      .map((u) => u.text.replace(/[A-Z][A-Za-z-]*(\s[A-Z][A-Za-z-]*)*/g, '#'))
+      .filter(Boolean);
+
+    for (let i = 1; i < shapes.length; i++) {
+      expect(shapes[i], `template repeated back-to-back at ${i}`).not.toBe(shapes[i - 1]);
+    }
+  });
+
+  test('prefers a network voice over an on-device one', async ({ page }) => {
+    await stubSpeech(page, [IN_LOCAL, IN_NET, US_NET]);
+    await page.goto(FILE_URL);
+    await page.locator('.tile').first().focus();
+    await page.keyboard.press('Enter');
+
+    const utts = await spoken(page);
+    expect(utts[0].voice).toBe('IN Network');
+  });
+
+  test('still speaks when only an on-device voice exists', async ({ page }) => {
+    await stubSpeech(page, [IN_LOCAL]);
+    await page.goto(FILE_URL);
+    await page.locator('.tile').first().focus();
+    await page.keyboard.press('Enter');
+
+    const utts = await spoken(page);
+    expect(utts.length).toBeGreaterThan(0);
+    expect(utts[0].voice).toBe('IN Local');
+  });
+});

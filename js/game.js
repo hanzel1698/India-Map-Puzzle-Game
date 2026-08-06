@@ -74,7 +74,7 @@
 
     placedCount++;
     IMP.audio.playCorrect();
-    IMP.speech.say(state.name);
+    IMP.speech.sayState(state, 'PLACED');
     announce(state.name + ' placed. ' + placedCount + ' of ' + active.length + ' done.');
 
     if (IMP.store.earnSticker(state.id)) {
@@ -133,7 +133,7 @@
     dom.next.hidden = level >= 3;
 
     IMP.audio.playFanfare();
-    IMP.speech.say(level === 3 ? 'You finished all of India!' : 'Well done!');
+    IMP.speech.sayFrom(level === 3 ? 'WIN_ALL' : 'WIN');
     IMP.effects.confetti(level === 3 ? 200 : 130);
     announce('Level complete. You earned a sticker.');
   }

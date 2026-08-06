@@ -63,6 +63,7 @@ That one constraint decided almost everything here.
 | **Drag** | Works with finger, mouse or stylus. The snap radius is huge — at six pieces it is 18% of the map's width. |
 | **Keyboard** | Tab to the tray, arrow keys to choose, Enter to place. This is also how a grown-up helps. |
 | **Sound** | One button mutes both effects and speech. It is remembered. |
+| **Voice** | Names are spoken inside short phrases rather than as bare words — an isolated word gets flat "citation form" from every TTS engine, which is what makes synthesised speech sound robotic. Wording rotates so it isn't identical each time. Retune it in `SPEECH` in `js/config.js`; no logic to touch. |
 | **Stickers** | A sticker for every state ever placed, plus a trophy per level. Saved on the device. |
 
 ---
@@ -152,7 +153,7 @@ never destroys it.
 npm test
 ```
 
-Fourteen Playwright tests, run against both `file://` and `http://`. The three that
+Nineteen Playwright tests, run against both `file://` and `http://`. The ones that
 earn their keep:
 
 - **The gap test** paints the silhouette red, paints all 36 states over it in
