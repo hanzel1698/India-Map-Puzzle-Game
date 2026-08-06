@@ -152,7 +152,7 @@ never destroys it.
 npm test
 ```
 
-Twelve Playwright tests, run against both `file://` and `http://`. The two that
+Thirteen Playwright tests, run against both `file://` and `http://`. The three that
 earn their keep:
 
 - **The gap test** paints the silhouette red, paints all 36 states over it in
@@ -161,6 +161,9 @@ earn their keep:
 - **The touch-drag test** drives real `touchStart`/`Move`/`End` through CDP,
   because `page.touchscreen` only exposes `tap()` and the actual player will
   never use a mouse.
+- **The single-file test** copies `dist/india-map-puzzle.html` alone into an
+  empty temp directory and loads it there — the honest reproduction of what an
+  Android file manager does — then drags a piece and opens the sticker book.
 
 The rest cover: loading with zero console errors, a correct drop, a wrong drop
 returning to the tray with no ghost left stranded, finishing a level and the
