@@ -5,7 +5,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [claude/india-map-puzzle-game-3usn0u]
+    branches: [main, claude/india-map-puzzle-game-3usn0u]
   workflow_dispatch:
 
 permissions:
