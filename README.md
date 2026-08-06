@@ -164,6 +164,23 @@ orientations. Then hand it to the four-year-old and watch where they get stuck.
 
 ---
 
+## Deploying
+
+Hosted on GitHub Pages, served straight from the branch — **Settings → Pages →
+Source: "Deploy from a branch" → `main` → `/ (root)`**. Every push to `main` rebuilds it.
+
+There is deliberately no Actions workflow. The site is static files at the repository root
+with nothing to compile, so a build pipeline would only add moving parts — and it did: an
+Actions deploy needs the `github-pages` environment, whose auto-created deployment-branch
+policy is pinned to whatever the default branch was when Pages was first enabled, and it
+rejects runs from any other branch before they even get a runner.
+
+Two things make the subpath work, and both matter because project sites are served from
+`/<repo>/` rather than the domain root:
+
+- every path in the HTML, CSS and JS is relative (`./js/x.js`, never `/js/x.js`);
+- `.nojekyll` is committed, so Jekyll does not process the tree.
+
 ## Known compromises
 
 - **Exclaves are collapsed.** Puducherry is really four territories scattered
