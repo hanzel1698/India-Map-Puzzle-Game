@@ -1,0 +1,42 @@
+name: Deploy to GitHub Pages
+
+# The site is plain static files -- no build step -- so this just uploads the
+# repository as-is and hands it to Pages.
+
+on:
+  push:
+    branches: [claude/india-map-puzzle-game-3usn0u]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race. Queue rather than cancel, so a run already
+# publishing is allowed to finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # enablement: true turns Pages on through the API using this workflow's
+      # token, so the site works without anyone visiting the repository settings.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
