@@ -188,63 +188,58 @@ body {
 /* ---------- Tray ---------- */
 
 .tray {
+/* The tray never scrolls. It holds exactly TRAY_MAX (6) pieces by design, so the
+   tiles share the space instead of overflowing it.
+
+   This is not just tidiness. Tiles carry `touch-action: none`, which they must,
+   or a drag starting on one gets stolen by the browser as a scroll. But the tray
+   is made entirely of tiles, so there is no surface left to swipe on -- a
+   scrolling tray would be a tray whose clipped pieces are unreachable on touch.
+   Making six always fit removes the conflict rather than papering over it. */
   grid-area: tray;
   display: flex;
-  gap: 10px;
-  padding: 10px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  gap: 8px;
+  padding: 8px;
+  overflow: hidden;
   align-items: stretch;
   border-top: 2px solid var(--line);
   background: #fffdf8;
-  scroll-snap-type: x proximity;
-  touch-action: pan-x;
+  touch-action: none;
 }
 
 @media (orientation: landscape) and (min-width: 720px) {
   .tray {
     flex-direction: column;
-    overflow-x: hidden;
-    overflow-y: auto;
     border-top: none;
     border-left: 2px solid var(--line);
-    scroll-snap-type: y proximity;
-    touch-action: pan-y;
   }
 }
 
-/* Tiles are explicitly sized rather than left to grow. A piece SVG will happily
-   fill whatever box you give it, and an unconstrained tile expands until only
-   two fit in the rail -- which defeats the point of showing six. */
+/* Tiles divide the tray between them (`flex: 1 1 0`), so six always fit exactly
+   whatever the screen. Hard-coded sizes cannot do this: they either overflow on
+   a small screen or leave the rail half empty on a large one. */
 .tile {
-  flex: 0 0 auto;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
-  width: 96px;
-  height: 100%;
   padding: 6px;
   border: 2px solid var(--line);
   border-radius: var(--radius);
   background: #fff;
   cursor: grab;
   font: inherit;
-  scroll-snap-align: center;
   /* The tile is a full rectangle, so a thin state like Kerala is still easy to
      grab -- the child never has to hit the polygon itself. */
   touch-action: none;
 }
 
-@media (orientation: landscape) and (min-width: 720px) {
-  .tile {
-    width: 100%;
-    /* Six of these plus gaps fill a typical rail exactly; more than six and the
-       rail scrolls rather than shrinking the pieces. */
-    height: clamp(92px, calc((100dvh - 90px) / 6 - 10px), 132px);
-  }
-}
+/* In the landscape rail the tiles stack, so they divide the height instead --
+   `flex: 1 1 0` on the column axis already does that. Nothing to override. */
 
 .tile:focus-visible { outline: 4px solid var(--accent-2); outline-offset: 2px; }
 .tile.taken { visibility: hidden; }
@@ -257,7 +252,14 @@ body {
   color: var(--muted);
   text-align: center;
   line-height: 1.15;
-  max-width: 100px;
+  width: 100%;
+  flex: 0 0 auto;
+  /* Long names like "Dadra and Nagar Haveli and Daman and Diu" must not push the
+     piece artwork out of a tile that is now only a sixth of the tray. */
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 /* ---------- Drag ghost ----------

@@ -418,3 +418,49 @@ test('the single-file build works with no sibling files at all', async ({ page }
 
   await page.screenshot({ path: join(SHOTS, 'single-file.png') });
 });
+
+// ---------------------------------------------------------------------------
+
+test('all six tray pieces fit on screen, with nothing clipped', async ({ browser }) => {
+  /* Regression. Tiles carry `touch-action: none` so a drag is never stolen as a
+     scroll -- which means the tray is one solid surface with nothing swipeable,
+     and any tile pushed outside it is simply unreachable on a touchscreen.
+     A tray that overflows is therefore a tray with lost pieces, not a tray that
+     scrolls. Six must always fit. */
+  for (const [width, height, name] of [
+    [1280, 800, 'tablet landscape'],
+    [800, 1280, 'tablet portrait'],
+    [1024, 768, 'small tablet landscape'],
+    [412, 915, 'phone portrait'],
+    [1440, 900, 'laptop'],
+  ]) {
+    const context = await browser.newContext({ viewport: { width, height }, hasTouch: true });
+    const page = await context.newPage();
+    await page.goto(FILE_URL);
+    await page.click('.chip[data-level="3"]');     // 36 pieces: the tray is full
+    await expect(page.locator('.tile')).toHaveCount(6);
+
+    const result = await page.evaluate(() => {
+      const tray = document.getElementById('tray');
+      const box = tray.getBoundingClientRect();
+      const clipped = [...document.querySelectorAll('.tile')]
+        .filter((t) => {
+          const b = t.getBoundingClientRect();
+          return b.right > box.right + 1 || b.bottom > box.bottom + 1 ||
+                 b.left < box.left - 1 || b.top < box.top - 1;
+        })
+        .map((t) => t.dataset.id);
+      return {
+        clipped,
+        overflowX: tray.scrollWidth - tray.clientWidth,
+        overflowY: tray.scrollHeight - tray.clientHeight,
+      };
+    });
+
+    expect(result.clipped, `clipped tiles at ${name}`).toEqual([]);
+    expect(result.overflowX, `horizontal overflow at ${name}`).toBeLessThanOrEqual(1);
+    expect(result.overflowY, `vertical overflow at ${name}`).toBeLessThanOrEqual(1);
+
+    await context.close();
+  }
+});

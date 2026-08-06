@@ -152,7 +152,7 @@ never destroys it.
 npm test
 ```
 
-Thirteen Playwright tests, run against both `file://` and `http://`. The three that
+Fourteen Playwright tests, run against both `file://` and `http://`. The three that
 earn their keep:
 
 - **The gap test** paints the silhouette red, paints all 36 states over it in
