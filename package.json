@@ -1,0 +1,20 @@
+{
+  "name": "india-map-puzzle",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A map-of-India jigsaw for very young children. The game itself has zero runtime dependencies; everything below is build- and test-time only.",
+  "type": "module",
+  "scripts": {
+    "fetch": "node tools/fetch-map.mjs",
+    "map": "bash tools/build-map.sh",
+    "project": "node tools/project.mjs",
+    "verify": "node tools/verify.mjs",
+    "build": "npm run fetch && npm run map && npm run project && npm run verify",
+    "test": "playwright test",
+    "serve": "python3 -m http.server 8123"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "mapshaper": "0.7.51"
+  }
+}

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="description" content="A gentle map-of-India jigsaw for very young children. Drag each state into place.">
+<meta name="theme-color" content="#f6f1e6">
+<title>India Map Puzzle</title>
+<!-- Every path is relative. Root-absolute paths would break both file:// and
+     GitHub Pages project sites, which are served from /<repo>/. -->
+<link rel="stylesheet" href="./css/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>">
+</head>
+<body>
+
+<header class="hud">
+  <h1 class="title">India Map Puzzle</h1>
+
+  <div class="levels" role="tablist" aria-label="Choose how many pieces">
+    <button class="chip" type="button" role="tab" data-level="1" aria-selected="true">
+      <span class="chip-num">6</span><span class="chip-word">pieces</span>
+    </button>
+    <button class="chip" type="button" role="tab" data-level="2" aria-selected="false">
+      <span class="chip-num">12</span><span class="chip-word">pieces</span>
+    </button>
+    <button class="chip" type="button" role="tab" data-level="3" aria-selected="false">
+      <span class="chip-num">36</span><span class="chip-word">pieces</span>
+    </button>
+  </div>
+
+  <div class="hud-right">
+    <p class="progress" id="progress" aria-hidden="true"></p>
+    <button class="icon-btn" id="mute" type="button" aria-pressed="false" aria-label="Turn sound off">
+      <span class="icon-on">🔊</span><span class="icon-off">🔇</span>
+    </button>
+    <a class="icon-btn" href="./stickers.html" aria-label="Open the sticker book">⭐</a>
+  </div>
+</header>
+
+<main class="board-wrap">
+  <svg id="board" role="img" aria-label="Map of India with empty spaces for each state"></svg>
+</main>
+
+<section class="tray" id="tray" role="listbox"
+         aria-label="Pieces to place. Pick one, then drop it on the map.">
+</section>
+
+<!-- Announcements for screen readers; also the fallback for anyone who cannot
+     hear the spoken state names. -->
+<p class="sr-only" id="live" aria-live="polite" role="status"></p>
+
+<div class="win" id="win" hidden>
+  <div class="win-card" role="dialog" aria-modal="true" aria-labelledby="win-title">
+    <p class="win-emoji" id="win-emoji">🎉</p>
+    <h2 id="win-title">You did it!</h2>
+    <p id="win-sub">You finished the whole map.</p>
+    <div class="win-actions">
+      <button class="big-btn" type="button" id="again">Play again</button>
+      <button class="big-btn ghost-btn" type="button" id="next">Next level</button>
+    </div>
+    <a class="win-link" href="./stickers.html">See my stickers ⭐</a>
+  </div>
+</div>
+
+<canvas id="confetti" aria-hidden="true"></canvas>
+
+<!-- Classic scripts, loaded in order. NOT ES modules: module scripts are fetched
+     with CORS semantics, and on file:// the origin is null, so every import is
+     blocked. `defer` preserves document order and runs before DOMContentLoaded,
+     which is all the ordering we need. -->
+<script defer src="./js/config.js"></script>
+<script defer src="./js/util.js"></script>
+<script defer src="./js/store.js"></script>
+<script defer src="./data/states.js"></script>
+<script defer src="./js/audio.js"></script>
+<script defer src="./js/speech.js"></script>
+<script defer src="./js/effects.js"></script>
+<script defer src="./js/render.js"></script>
+<script defer src="./js/drag.js"></script>
+<script defer src="./js/game.js"></script>
+</body>
+</html>
