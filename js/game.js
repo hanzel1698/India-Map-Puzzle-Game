@@ -7,58 +7,89 @@
   'use strict';
 
   const CFG = IMP.config;
-  const { shuffle } = IMP.util;
   const M = window.INDIA_MAP;
 
   const dom = {};
 
   let level = 1;
   let active = [];       // states in this level
-  let queue = [];        // not yet shown in the tray
   let placedPaths = {};
   let placedCount = 0;
   const misses = {};     // state id -> wrong drops, drives the escalating hints
+  const undoStack = [];
+  const redoStack = [];
 
   // --- tray ---------------------------------------------------------------
 
-  /**
-   * Refill the tray up to TRAY_MAX.
-   *
-   * The "always keep one big piece visible" rule is the important part: a tray
-   * showing only Goa, Sikkim and Tripura is a tray with no achievable win on it,
-   * and that is where a four-year-old gives up.
-   */
-  function refillTray() {
-    const shown = dom.tray.querySelectorAll('.tile').length;
-    let need = CFG.TRAY_MAX - shown;
-    if (need <= 0 || !queue.length) return;
+  const byName = function (a, b) { return a.name.localeCompare(b.name); };
 
-    const bigOnScreen = Array.prototype.some.call(
-      dom.tray.querySelectorAll('.tile'),
-      function (t) {
-        const s = IMP.render.byId[t.dataset.id];
-        return s && s.minScale === 1;
-      }
-    );
+  function makeTile(state) {
+    const tile = IMP.render.buildTile(state);
+    IMP.drag.bindTile(tile, state);
+    return tile;
+  }
 
-    while (need > 0 && queue.length) {
-      let idx = 0;
-      if (!bigOnScreen && dom.tray.querySelectorAll('.tile').length === 0) {
-        const big = queue.findIndex(function (s) { return s.minScale === 1; });
-        if (big > -1) idx = big;
-      }
-      const state = queue.splice(idx, 1)[0];
-      const tile = IMP.render.buildTile(state);
-      IMP.drag.bindTile(tile, state);
-      dom.tray.appendChild(tile);
-      need--;
-    }
+  /** Fill the tray with every unplaced piece, in alphabetical order. */
+  function fillTray(states) {
+    dom.tray.innerHTML = '';
+    states.slice().sort(byName).forEach(function (s) {
+      dom.tray.appendChild(makeTile(s));
+    });
     updateRovingTabindex();
+    updateArrows();
+  }
+
+  /**
+   * Put a tile back where it belongs alphabetically. Undo would otherwise append
+   * it to the end, which is the one thing an ordered list must not do.
+   */
+  function insertTileSorted(state) {
+    const tile = makeTile(state);
+    const existing = Array.prototype.slice.call(dom.tray.querySelectorAll('.tile'));
+    const after = existing.find(function (t) {
+      const s = IMP.render.byId[t.dataset.id];
+      return s && byName(s, state) > 0;
+    });
+    dom.tray.insertBefore(tile, after || null);
+    updateRovingTabindex();
+    updateArrows();
+    return tile;
+  }
+
+  // --- tray scrolling -----------------------------------------------------
+
+  const isRail = function () {
+    return getComputedStyle(dom.tray).flexDirection === 'column';
+  };
+
+  function scrollTray(dir) {
+    const rail = isRail();
+    const amount = (rail ? dom.tray.clientHeight : dom.tray.clientWidth) * 0.8;
+    dom.tray.scrollBy(
+      rail ? { top: dir * amount, behavior: 'smooth' }
+           : { left: dir * amount, behavior: 'smooth' }
+    );
+  }
+
+  function updateArrows() {
+    if (!dom.prev) return;
+    const rail = isRail();
+    const pos = rail ? dom.tray.scrollTop : dom.tray.scrollLeft;
+    const max = rail
+      ? dom.tray.scrollHeight - dom.tray.clientHeight
+      : dom.tray.scrollWidth - dom.tray.clientWidth;
+    dom.prev.disabled = pos <= 1;
+    dom.next.disabled = pos >= max - 1;
+    // Nothing to scroll at all: hide rather than show two dead buttons.
+    const scrollable = max > 1;
+    dom.prev.hidden = !scrollable;
+    dom.next.hidden = !scrollable;
   }
 
   // --- placement ----------------------------------------------------------
 
-  function onPlace(state) {
+  function applyPlacement(state, opts) {
+    const o = opts || {};
     const path = placedPaths[state.id];
     if (path) {
       path.setAttribute('opacity', '1');
@@ -77,14 +108,69 @@
     IMP.speech.sayState(state, 'PLACED');
     announce(state.name + ' placed. ' + placedCount + ' of ' + active.length + ' done.');
 
-    if (IMP.store.earnSticker(state.id)) {
-      /* first time this state has ever been placed -- sticker book grows */
-    }
+    // Stickers record states ever placed. Deliberately never revoked by undo --
+    // the book is a permanent collection, and taking one back for pressing undo
+    // would be a punishment in a game built to have none. earnSticker is
+    // idempotent, so redo is a no-op here.
+    IMP.store.earnSticker(state.id);
 
     updateProgress();
-    refillTray();
+    updateArrows();
 
+    if (placedCount === active.length && !o.silent) setTimeout(win, 420);
+  }
+
+  function revertPlacement(state) {
+    const path = placedPaths[state.id];
+    if (path) {
+      path.setAttribute('opacity', '0');
+      if (path._group) path._group.setAttribute('opacity', '0');
+    }
+
+    const slot = dom.board.querySelector('.slot[data-id="' + state.id + '"]');
+    if (slot) slot.style.opacity = '';
+
+    placedCount--;
+    insertTileSorted(state);
+    updateProgress();
+
+    // Undoing after finishing should take the celebration away with it.
+    dom.win.hidden = true;
+    IMP.effects.clear();
+
+    announce(state.name + ' put back. ' + placedCount + ' of ' + active.length + ' done.');
+  }
+
+  function onPlace(state) {
+    undoStack.push(state);
+    redoStack.length = 0;
+    applyPlacement(state);
+    updateHistoryButtons();
+  }
+
+  function undo() {
+    const state = undoStack.pop();
+    if (!state) return;
+    redoStack.push(state);
+    revertPlacement(state);
+    updateHistoryButtons();
+  }
+
+  function redo() {
+    const state = redoStack.pop();
+    if (!state) return;
+    undoStack.push(state);
+    const tile = dom.tray.querySelector('.tile[data-id="' + state.id + '"]');
+    if (tile) tile.remove();
+    // silent: replaying a placement should not re-run the whole win fanfare.
+    applyPlacement(state, { silent: true });
     if (placedCount === active.length) setTimeout(win, 420);
+    updateHistoryButtons();
+  }
+
+  function updateHistoryButtons() {
+    dom.undo.disabled = undoStack.length === 0;
+    dom.redo.disabled = redoStack.length === 0;
   }
 
   function onMiss(state) {
@@ -102,17 +188,19 @@
     IMP.store.setSetting('level', level);
 
     active = M.states.filter(function (s) { return s.level <= level; });
-    queue = shuffle(active.slice());
     placedCount = 0;
     for (const k in misses) delete misses[k];
+    undoStack.length = 0;
+    redoStack.length = 0;
 
     placedPaths = IMP.render.buildBoard(dom.board, active);
-    dom.tray.innerHTML = '';
     dom.win.hidden = true;
     IMP.effects.clear();
+    IMP.zoom.setBase(M.viewBox);
 
-    refillTray();
+    fillTray(active);
     updateProgress();
+    updateHistoryButtons();
 
     Array.prototype.forEach.call(dom.chips, function (chip) {
       chip.setAttribute('aria-selected', String(+chip.dataset.level === level));
@@ -211,6 +299,13 @@
     dom.next = document.getElementById('next');
     dom.again = document.getElementById('again');
     dom.chips = document.querySelectorAll('.chip');
+    dom.undo = document.getElementById('undo');
+    dom.redo = document.getElementById('redo');
+    dom.prev = document.getElementById('tray-prev');
+    dom.next = document.getElementById('tray-next');
+    dom.zoomIn = document.getElementById('zoom-in');
+    dom.zoomOut = document.getElementById('zoom-out');
+    dom.zoomReset = document.getElementById('zoom-reset');
 
     // Weak devices get the flat style: 36 drop-shadowed paths is where a cheap
     // tablet starts dropping frames.
@@ -240,16 +335,40 @@
     });
 
     dom.again.addEventListener('click', function () { startLevel(level); });
+    document.getElementById('admire').addEventListener('click', function () {
+      dom.win.hidden = true;
+      IMP.effects.clear();
+    });
     dom.next.addEventListener('click', function () {
       startLevel(Math.min(3, level + 1));
     });
 
     dom.tray.addEventListener('keydown', onTrayKey);
+    dom.tray.addEventListener('scroll', IMP.util.debounce(updateArrows, 80));
 
-    window.addEventListener(
-      'resize',
-      IMP.util.debounce(function () { /* board rescales itself via viewBox */ }, 120)
-    );
+    dom.undo.addEventListener('click', undo);
+    dom.redo.addEventListener('click', redo);
+    dom.prev.addEventListener('click', function () { scrollTray(-1); });
+    dom.next.addEventListener('click', function () { scrollTray(1); });
+
+    // Costs nothing and helps the adult sitting alongside.
+    document.addEventListener('keydown', function (e) {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    });
+
+    IMP.zoom.attach(dom.board, function (scale) {
+      dom.zoomIn.disabled = scale >= IMP.zoom.MAX - 0.01;
+      dom.zoomOut.disabled = scale <= IMP.zoom.MIN + 0.01;
+      dom.zoomReset.disabled = scale <= IMP.zoom.MIN + 0.01;
+    });
+    dom.zoomIn.addEventListener('click', IMP.zoom.zoomIn);
+    dom.zoomOut.addEventListener('click', IMP.zoom.zoomOut);
+    dom.zoomReset.addEventListener('click', IMP.zoom.reset);
+
+    window.addEventListener('resize', IMP.util.debounce(updateArrows, 120));
 
     startLevel(settings.level && settings.level <= 3 ? settings.level : 1);
 
@@ -262,8 +381,16 @@
         onPlace(IMP.render.byId[id]);
       },
       state: function () {
-        return { level, placed: placedCount, total: active.length };
+        return {
+          level,
+          placed: placedCount,
+          total: active.length,
+          undo: undoStack.length,
+          redo: redoStack.length,
+        };
       },
+      undo,
+      redo,
     };
   }
 

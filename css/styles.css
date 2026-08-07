@@ -135,7 +135,27 @@ body {
   min-height: 0;
   min-width: 0;
   padding: 6px;
+  position: relative;
 }
+
+.zoom-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 5;
+}
+.zoom-controls .icon-btn {
+  width: 52px;
+  height: 52px;
+  font-size: 22px;
+  background: #fffdf8;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .12);
+  touch-action: none;
+}
+.zoom-controls .icon-btn:disabled { opacity: .35; cursor: default; }
 
 #board {
   width: 100%;
@@ -174,41 +194,84 @@ body {
 
 /* ---------- Tray ---------- */
 
-.tray {
-/* The tray never scrolls. It holds exactly TRAY_MAX (6) pieces by design, so the
-   tiles share the space instead of overflowing it.
-
-   This is not just tidiness. Tiles carry `touch-action: none`, which they must,
-   or a drag starting on one gets stolen by the browser as a scroll. But the tray
-   is made entirely of tiles, so there is no surface left to swipe on -- a
-   scrolling tray would be a tray whose clipped pieces are unreachable on touch.
-   Making six always fit removes the conflict rather than papering over it. */
+/* The tray lists every remaining piece alphabetically and scrolls.
+   .tray-wrap holds the scroll arrows either side of it. */
+.tray-wrap {
   grid-area: tray;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 0;
+  border-top: 2px solid var(--line);
+  background: #fffdf8;
+}
+
+.tray {
+  flex: 1 1 auto;
   display: flex;
   gap: 8px;
   padding: 8px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   align-items: stretch;
-  border-top: 2px solid var(--line);
-  background: #fffdf8;
-  touch-action: none;
+  min-width: 0;
+  scrollbar-width: thin;
+  scroll-behavior: smooth;
 }
 
 @media (orientation: landscape) and (min-width: 720px) {
-  .tray {
+  .tray-wrap {
     flex-direction: column;
     border-top: none;
     border-left: 2px solid var(--line);
   }
+  .tray {
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    min-height: 0;
+  }
 }
 
-/* Tiles divide the tray between them (`flex: 1 1 0`), so six always fit exactly
-   whatever the screen. Hard-coded sizes cannot do this: they either overflow on
-   a small screen or leave the rail half empty on a large one. */
+/* Big, obvious, and always available. A four-year-old's swipe is diagonal and
+   may be claimed by the drag rather than the scroller, so these are the
+   guaranteed route to the far end of the list. */
+.tray-arrow {
+  flex: 0 0 auto;
+  width: 44px;
+  border: none;
+  background: #f3ede0;
+  color: var(--ink);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: none;
+  padding: 0;
+}
+.tray-arrow:disabled { opacity: .25; cursor: default; }
+
+@media (orientation: landscape) and (min-width: 720px) {
+  /* Swap the glyph rather than rotating one. A rotated full-width ::before
+     becomes a full-HEIGHT hit area, and hit-testing follows transforms -- it
+     silently swallowed clicks on the HUD buttons well above the arrow. */
+  .tray-arrow {
+    width: auto;
+    height: 44px;
+    font-size: 0;
+    overflow: hidden;
+  }
+  .tray-arrow::before { font-size: 20px; line-height: 44px; display: block; }
+  #tray-prev::before { content: '▲'; }
+  #tray-next::before { content: '▼'; }
+}
+
+/* Fixed size, because the tray now scrolls through the whole alphabetical list
+   rather than fitting a fixed number of pieces. */
 .tile {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 0;
+  flex: 0 0 auto;
+  width: 104px;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -220,13 +283,26 @@ body {
   background: #fff;
   cursor: grab;
   font: inherit;
-  /* The tile is a full rectangle, so a thin state like Kerala is still easy to
-     grab -- the child never has to hit the polygon itself. */
-  touch-action: none;
+  scroll-snap-align: center;
+
+  /* Directional, not `none`. The geometry disambiguates: in portrait the tray
+     runs along the bottom and a piece is dragged UPWARD onto the map, so
+     allowing horizontal panning lets a sideways swipe scroll the list while a
+     vertical drag still picks the piece up. `none` here would make the list
+     unscrollable, since the tray is nothing but tiles. If the browser does claim
+     a gesture it fires pointercancel, which drag.js handles by returning the
+     piece -- so the worst case is a piece that does not move, never a lost one. */
+  touch-action: pan-x;
 }
 
-/* In the landscape rail the tiles stack, so they divide the height instead --
-   `flex: 1 1 0` on the column axis already does that. Nothing to override. */
+@media (orientation: landscape) and (min-width: 720px) {
+  .tile {
+    width: 100%;
+    height: 108px;
+    /* Rail scrolls vertically; pieces are dragged leftward onto the map. */
+    touch-action: pan-y;
+  }
+}
 
 .tile:focus-visible { outline: 4px solid var(--accent-2); outline-offset: 2px; }
 .tile.taken { visibility: hidden; }

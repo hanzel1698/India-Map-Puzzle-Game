@@ -61,7 +61,7 @@
       /* capture is an optimisation, not a requirement */
     }
 
-    const scale = boardScale(board, IMP.render.VW, IMP.render.VH) * state.minScale;
+    const scale = boardScale(board) * state.minScale;
     const pad = CFG.PIECE_PAD;
     const [x0, y0, x1, y1] = state.bbox;
     const w = (x1 - x0 + pad * 2) * scale;

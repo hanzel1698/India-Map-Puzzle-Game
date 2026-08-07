@@ -30,6 +30,8 @@
 
   <div class="hud-right">
     <p class="progress" id="progress" aria-hidden="true"></p>
+    <button class="icon-btn" id="undo" type="button" aria-label="Undo" disabled>↶</button>
+    <button class="icon-btn" id="redo" type="button" aria-label="Redo" disabled>↷</button>
     <button class="icon-btn" id="mute" type="button" aria-pressed="false" aria-label="Turn sound off">
       <span class="icon-on">🔊</span><span class="icon-off">🔇</span>
     </button>
@@ -40,11 +42,23 @@
 
 <main class="board-wrap">
   <svg id="board" role="img" aria-label="Map of India with empty spaces for each state"></svg>
+  <div class="zoom-controls">
+    <button class="icon-btn" id="zoom-in" type="button" aria-label="Zoom in">＋</button>
+    <button class="icon-btn" id="zoom-out" type="button" aria-label="Zoom out" disabled>−</button>
+    <button class="icon-btn" id="zoom-reset" type="button" aria-label="Fit the whole map" disabled>⤢</button>
+  </div>
 </main>
 
-<section class="tray" id="tray" role="listbox"
-         aria-label="Pieces to place. Pick one, then drop it on the map.">
-</section>
+<!-- Arrows flank the tray because every pixel of it is a draggable tile: tiles
+     must claim the drag gesture, which leaves nothing to swipe on. The arrows
+     are the guaranteed way to reach the far end of the list. -->
+<div class="tray-wrap">
+  <button class="tray-arrow" id="tray-prev" type="button" aria-label="Show earlier pieces">‹</button>
+  <section class="tray" id="tray" role="listbox"
+           aria-label="Pieces to place, in alphabetical order. Pick one, then drop it on the map.">
+  </section>
+  <button class="tray-arrow" id="tray-next" type="button" aria-label="Show more pieces">›</button>
+</div>
 
 <!-- Announcements for screen readers; also the fallback for anyone who cannot
      hear the spoken state names. -->
@@ -59,6 +73,9 @@
       <button class="big-btn" type="button" id="again">Play again</button>
       <button class="big-btn ghost-btn" type="button" id="next">Next level</button>
     </div>
+    <!-- Without this the overlay is a dead end: it covers the whole screen, so
+         you cannot admire the map you just finished, and cannot reach undo. -->
+    <button class="win-link" type="button" id="admire">Look at my map</button>
     <button class="win-link" type="button" id="win-stickers">See my stickers ⭐</button>
   </div>
 </div>
@@ -96,6 +113,7 @@
 <script defer src="./js/speech.js"></script>
 <script defer src="./js/effects.js"></script>
 <script defer src="./js/render.js"></script>
+<script defer src="./js/zoom.js"></script>
 <script defer src="./js/drag.js"></script>
 <script defer src="./js/game.js"></script>
 <script defer src="./js/stickers.js"></script>

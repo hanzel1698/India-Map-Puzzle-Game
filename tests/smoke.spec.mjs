@@ -57,7 +57,7 @@ test.describe('loads cleanly', () => {
     const errors = watchErrors(page);
     await page.goto(FILE_URL);
     await expect(page.locator('#board')).toBeVisible();
-    await expect(page.locator('.tile')).toHaveCount(6);
+    await expect(page.locator('.tile')).toHaveCount(6);   // level 1 = 6 states
     expect(errors).toEqual([]);
   });
 
@@ -365,7 +365,7 @@ test('lays out on laptop, tablet landscape and tablet portrait', async ({ browse
     await page.screenshot({ path: join(SHOTS, name + '.png') });
 
     await page.click('.chip[data-level="3"]');
-    await expect(page.locator('.tile')).toHaveCount(6);
+    await expect(page.locator('.tile')).toHaveCount(36);
     if (name === 'laptop') {
       await page.screenshot({ path: join(SHOTS, 'level3.png') });
     }
@@ -419,51 +419,6 @@ test('the single-file build works with no sibling files at all', async ({ page }
   await page.screenshot({ path: join(SHOTS, 'single-file.png') });
 });
 
-// ---------------------------------------------------------------------------
-
-test('all six tray pieces fit on screen, with nothing clipped', async ({ browser }) => {
-  /* Regression. Tiles carry `touch-action: none` so a drag is never stolen as a
-     scroll -- which means the tray is one solid surface with nothing swipeable,
-     and any tile pushed outside it is simply unreachable on a touchscreen.
-     A tray that overflows is therefore a tray with lost pieces, not a tray that
-     scrolls. Six must always fit. */
-  for (const [width, height, name] of [
-    [1280, 800, 'tablet landscape'],
-    [800, 1280, 'tablet portrait'],
-    [1024, 768, 'small tablet landscape'],
-    [412, 915, 'phone portrait'],
-    [1440, 900, 'laptop'],
-  ]) {
-    const context = await browser.newContext({ viewport: { width, height }, hasTouch: true });
-    const page = await context.newPage();
-    await page.goto(FILE_URL);
-    await page.click('.chip[data-level="3"]');     // 36 pieces: the tray is full
-    await expect(page.locator('.tile')).toHaveCount(6);
-
-    const result = await page.evaluate(() => {
-      const tray = document.getElementById('tray');
-      const box = tray.getBoundingClientRect();
-      const clipped = [...document.querySelectorAll('.tile')]
-        .filter((t) => {
-          const b = t.getBoundingClientRect();
-          return b.right > box.right + 1 || b.bottom > box.bottom + 1 ||
-                 b.left < box.left - 1 || b.top < box.top - 1;
-        })
-        .map((t) => t.dataset.id);
-      return {
-        clipped,
-        overflowX: tray.scrollWidth - tray.clientWidth,
-        overflowY: tray.scrollHeight - tray.clientHeight,
-      };
-    });
-
-    expect(result.clipped, `clipped tiles at ${name}`).toEqual([]);
-    expect(result.overflowX, `horizontal overflow at ${name}`).toBeLessThanOrEqual(1);
-    expect(result.overflowY, `vertical overflow at ${name}`).toBeLessThanOrEqual(1);
-
-    await context.close();
-  }
-});
 
 // ---------------------------------------------------------------------------
 
@@ -592,5 +547,239 @@ test.describe('speech', () => {
     const utts = await spoken(page);
     expect(utts.length).toBeGreaterThan(0);
     expect(utts[0].voice).toBe('IN Local');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+test.describe('the tray', () => {
+  test('lists every piece, alphabetically', async ({ page }) => {
+    await page.goto(FILE_URL);
+    await page.click('.chip[data-level="3"]');
+    await expect(page.locator('.tile')).toHaveCount(36);
+
+    const names = await page.evaluate(() =>
+      [...document.querySelectorAll('.tile')].map(
+        (t) => window.IMP.render.byId[t.dataset.id].name
+      )
+    );
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+    expect(names[0]).toBe('Andaman and Nicobar Islands');
+    expect(names[names.length - 1]).toBe('West Bengal');
+  });
+
+  test('scrolls, and the arrows reach both ends', async ({ browser }) => {
+    for (const [width, height, axis] of [
+      [1280, 800, 'y'],     // landscape rail scrolls vertically
+      [800, 1280, 'x'],     // portrait strip scrolls horizontally
+    ]) {
+      const context = await browser.newContext({ viewport: { width, height } });
+      const page = await context.newPage();
+      await page.goto(FILE_URL);
+      await page.click('.chip[data-level="3"]');
+      await expect(page.locator('.tile')).toHaveCount(36);
+
+      const overflow = await page.evaluate((ax) => {
+        const t = document.getElementById('tray');
+        return ax === 'y'
+          ? t.scrollHeight - t.clientHeight
+          : t.scrollWidth - t.clientWidth;
+      }, axis);
+      expect(overflow, `tray should overflow on ${axis}`).toBeGreaterThan(100);
+
+      // At the start there is nothing before, so only "next" is live.
+      await expect(page.locator('#tray-prev')).toBeDisabled();
+      await expect(page.locator('#tray-next')).toBeEnabled();
+
+      // Press "next" until it disables: the far end must be reachable.
+      for (let i = 0; i < 40; i++) {
+        if (await page.locator('#tray-next').isDisabled()) break;
+        await page.locator('#tray-next').click();
+        await page.waitForTimeout(120);
+      }
+      await expect(page.locator('#tray-next')).toBeDisabled();
+      await expect(page.locator('#tray-prev')).toBeEnabled();
+
+      await context.close();
+    }
+  });
+
+  test('the scroll arrows do not cover the HUD buttons', async ({ page }) => {
+    /* Regression: the landscape arrow used a rotated full-width ::before, and
+       because hit-testing follows transforms its clickable area extended far
+       past the button and swallowed presses on the HUD above it. */
+    await page.goto(FILE_URL);
+    await page.click('.chip[data-level="3"]');
+
+    for (const id of ['undo', 'redo', 'mute', 'open-stickers']) {
+      const onTop = await page.evaluate((btnId) => {
+        const r = document.getElementById(btnId).getBoundingClientRect();
+        const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        // The hit may land on a <span> inside the button; that still counts.
+        const btn = el && el.closest ? el.closest('button') : null;
+        return btn ? btn.id : el && el.tagName;
+      }, id);
+      expect(onTop, `${id} is covered by ${onTop}`).toBe(id);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+test.describe('undo and redo', () => {
+  const place = (page, ids) =>
+    page.evaluate((list) => list.forEach((id) => window.__IMP_TEST__.place(id)), ids);
+
+  test('undo puts a piece back in its alphabetical place', async ({ page }) => {
+    await page.goto(FILE_URL);
+    await page.click('.chip[data-level="3"]');
+    await place(page, ['Assam', 'Bihar', 'Goa'].map(() => null).filter(Boolean));
+    await place(page, ['AS', 'BR', 'GA']);
+
+    expect((await page.evaluate(() => window.__IMP_TEST__.state())).placed).toBe(3);
+
+    await page.click('#undo');
+    await page.click('#undo');
+
+    const s = await page.evaluate(() => window.__IMP_TEST__.state());
+    expect(s.placed).toBe(1);
+    expect(s.redo).toBe(2);
+
+    // Appending the restored tiles would be the obvious bug; assert ordering.
+    const names = await page.evaluate(() =>
+      [...document.querySelectorAll('.tile')].map(
+        (t) => window.IMP.render.byId[t.dataset.id].name
+      )
+    );
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+    expect(names).toContain('Bihar');
+    expect(names).toContain('Goa');
+  });
+
+  test('redo replaces them, and a new placement clears the redo stack', async ({ page }) => {
+    await page.goto(FILE_URL);
+    await page.click('.chip[data-level="3"]');
+    await place(page, ['AS', 'BR']);
+    await page.click('#undo');
+
+    await page.click('#redo');
+    expect((await page.evaluate(() => window.__IMP_TEST__.state())).placed).toBe(2);
+
+    await page.click('#undo');
+    await place(page, ['GA']);
+    const s = await page.evaluate(() => window.__IMP_TEST__.state());
+    expect(s.redo).toBe(0);
+  });
+
+  test('buttons disable when there is nothing to undo or redo', async ({ page }) => {
+    await page.goto(FILE_URL);
+    await expect(page.locator('#undo')).toBeDisabled();
+    await expect(page.locator('#redo')).toBeDisabled();
+
+    await place(page, ['MH']);
+    await expect(page.locator('#undo')).toBeEnabled();
+    await page.click('#undo');
+    await expect(page.locator('#redo')).toBeEnabled();
+    await expect(page.locator('#undo')).toBeDisabled();
+  });
+
+  test('undoing after a win takes the celebration away, but keeps the sticker', async ({ page }) => {
+    await page.goto(FILE_URL);
+    for (let i = 0; i < 6; i++) {
+      await page.locator('.tile').first().focus();
+      await page.keyboard.press('Enter');
+    }
+    await expect(page.locator('#win')).toBeVisible();
+
+    // The overlay is modal and covers the HUD, so it has to be dismissed first.
+    await page.click('#admire');
+    await expect(page.locator('#win')).toBeHidden();
+
+    await page.click('#undo');
+    await expect(page.locator('#win')).toBeHidden();
+    expect((await page.evaluate(() => window.__IMP_TEST__.state())).placed).toBe(5);
+
+    // The sticker book records states ever placed; undo must not confiscate one.
+    const stickers = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('imp.v1.stickers') || '[]')
+    );
+    expect(stickers).toContain('trophy-1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+test.describe('zoom', () => {
+  const viewBox = (page) => page.getAttribute('#board', 'viewBox');
+
+  test('buttons zoom in and reset', async ({ page }) => {
+    await page.goto(FILE_URL);
+    const base = await viewBox(page);
+
+    await page.click('#zoom-in');
+    const zoomed = await viewBox(page);
+    expect(zoomed).not.toBe(base);
+    // A smaller viewBox width means we are looking at less of the map.
+    expect(Number(zoomed.split(/\s+/)[2])).toBeLessThan(Number(base.split(/\s+/)[2]));
+
+    await page.click('#zoom-reset');
+    expect(await viewBox(page)).toBe(base);
+  });
+
+  test('cannot zoom out past the whole map', async ({ page }) => {
+    await page.goto(FILE_URL);
+    const base = await viewBox(page);
+    await expect(page.locator('#zoom-out')).toBeDisabled();
+    await page.click('#zoom-in');
+    await page.click('#zoom-out');
+    expect(await viewBox(page)).toBe(base);
+  });
+
+  test('a piece still snaps home while zoomed in', async ({ page }) => {
+    /* The one that matters. Hit-testing goes through getScreenCTM so it tracks
+       the viewBox, and the drag ghost is sized from the live viewBox -- both
+       would silently break if either started using the original dimensions. */
+    await page.goto(FILE_URL);
+    await page.click('#zoom-in');
+    await page.waitForTimeout(150);
+
+    const id = await firstTrayId(page);
+    const from = await tilePoint(page, id);
+    const to = await slotPoint(page, id);
+
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i++) {
+      await page.mouse.move(
+        from.x + ((to.x - from.x) * i) / 8,
+        from.y + ((to.y - from.y) * i) / 8
+      );
+    }
+    await page.mouse.up();
+
+    await expect(page.locator(`path.placed[data-id="${id}"]`)).toHaveAttribute('opacity', '1');
+  });
+
+  test('pinching with two fingers zooms', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true });
+    const page = await context.newPage();
+    await page.goto(FILE_URL);
+    const base = await page.getAttribute('#board', 'viewBox');
+
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: 400, y: 350 }, { x: 500, y: 350 }],
+    });
+    for (let i = 1; i <= 5; i++) {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: 400 - i * 20, y: 350 }, { x: 500 + i * 20, y: 350 }],
+      });
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+    expect(await page.getAttribute('#board', 'viewBox')).not.toBe(base);
+    await context.close();
   });
 });

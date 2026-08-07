@@ -47,9 +47,9 @@ That one constraint decided almost everything here.
   camel. The build fails if two states ever share an emoji.
 - **It says the names.** Picking a piece up and putting it down both speak the
   state's name, so the word attaches to the shape.
-- **Only six pieces are offered at a time**, drawn from a shuffled queue, with at
-  least one big easy one always among them. A tray of thirty-six choices is where
-  a small child stops.
+- **The tray lists every piece alphabetically.** An earlier version showed six at
+  a time to avoid overwhelming a small child; `TRAY_MAX` still exists in
+  `js/config.js` if that turns out to have been the better call.
 - **Everything is big.** No tap target under 64px.
 
 ![All thirty-six states](./docs/screenshot-level3.png)
@@ -61,6 +61,9 @@ That one constraint decided almost everything here.
 | | |
 |---|---|
 | **Drag** | Works with finger, mouse or stylus. The snap radius is huge — at six pieces it is 18% of the map's width. |
+| **The tray** | Every remaining piece, alphabetically, scrolling. Swipe *along* the tray to scroll and *toward the map* to drag — the two directions are perpendicular, so the browser can tell them apart. Arrow buttons at each end do it reliably when a small hand cannot. |
+| **Undo / redo** | Buttons in the header, plus Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z. Undo returns the piece to its alphabetical position. It never takes back a sticker. |
+| **Zoom** | Pinch, scroll-wheel, or the +/−/fit buttons; drag the map to pan. Helpful at 36 pieces, where Delhi and Goa are tiny. Snapping is unaffected — hit-testing is in viewBox units, so it is zoom-independent by construction. |
 | **Keyboard** | Tab to the tray, arrow keys to choose, Enter to place. This is also how a grown-up helps. |
 | **Sound** | One button mutes both effects and speech. It is remembered. |
 | **Voice** | Names are spoken inside short phrases rather than as bare words — an isolated word gets flat "citation form" from every TTS engine, which is what makes synthesised speech sound robotic. Wording rotates so it isn't identical each time. Retune it in `SPEECH` in `js/config.js`; no logic to touch. |
@@ -84,6 +87,7 @@ js/
   effects.js        confetti and flourishes
   render.js         builds the board SVG and the tray tiles
   drag.js           Pointer Events, the drag ghost, the snap test
+  zoom.js           pan and pinch, by rewriting the board's viewBox
   game.js           levels, tray queue, wiring
   stickers.js       sticker-book overlay
 tools/              build-time only, never shipped to the browser
@@ -153,7 +157,7 @@ never destroys it.
 npm test
 ```
 
-Nineteen Playwright tests, run against both `file://` and `http://`. The ones that
+Twenty-nine Playwright tests, run against both `file://` and `http://`. The ones that
 earn their keep:
 
 - **The gap test** paints the silhouette red, paints all 36 states over it in

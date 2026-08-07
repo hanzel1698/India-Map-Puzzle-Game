@@ -55,12 +55,24 @@
     return { x: r.x, y: r.y };
   }
 
-  /** Scale factor from viewBox units to CSS pixels for the current layout. */
-  function boardScale(board, viewW, viewH) {
+  /**
+   * Scale factor from viewBox units to CSS pixels, for the board as it is right
+   * now.
+   *
+   * Reads the LIVE viewBox rather than taking the original dimensions as
+   * arguments, because zooming works by rewriting the viewBox. Using the
+   * original constants would size the drag ghost against an unzoomed board, so a
+   * piece picked up while zoomed in would be visibly the wrong size for the slot
+   * it is aimed at.
+   */
+  function boardScale(board) {
     const r = board.getBoundingClientRect();
+    const vb = board.viewBox && board.viewBox.baseVal;
+    const w = vb && vb.width ? vb.width : r.width;
+    const h = vb && vb.height ? vb.height : r.height;
     // preserveAspectRatio="xMidYMid meet" letterboxes, so the effective scale is
     // whichever axis is the tighter fit.
-    return Math.min(r.width / viewW, r.height / viewH);
+    return Math.min(r.width / w, r.height / h);
   }
 
   function debounce(fn, ms) {

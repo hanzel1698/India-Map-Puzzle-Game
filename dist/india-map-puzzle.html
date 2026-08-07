@@ -148,7 +148,27 @@ body {
   min-height: 0;
   min-width: 0;
   padding: 6px;
+  position: relative;
 }
+
+.zoom-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 5;
+}
+.zoom-controls .icon-btn {
+  width: 52px;
+  height: 52px;
+  font-size: 22px;
+  background: #fffdf8;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .12);
+  touch-action: none;
+}
+.zoom-controls .icon-btn:disabled { opacity: .35; cursor: default; }
 
 #board {
   width: 100%;
@@ -187,41 +207,84 @@ body {
 
 /* ---------- Tray ---------- */
 
-.tray {
-/* The tray never scrolls. It holds exactly TRAY_MAX (6) pieces by design, so the
-   tiles share the space instead of overflowing it.
-
-   This is not just tidiness. Tiles carry `touch-action: none`, which they must,
-   or a drag starting on one gets stolen by the browser as a scroll. But the tray
-   is made entirely of tiles, so there is no surface left to swipe on -- a
-   scrolling tray would be a tray whose clipped pieces are unreachable on touch.
-   Making six always fit removes the conflict rather than papering over it. */
+/* The tray lists every remaining piece alphabetically and scrolls.
+   .tray-wrap holds the scroll arrows either side of it. */
+.tray-wrap {
   grid-area: tray;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 0;
+  border-top: 2px solid var(--line);
+  background: #fffdf8;
+}
+
+.tray {
+  flex: 1 1 auto;
   display: flex;
   gap: 8px;
   padding: 8px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   align-items: stretch;
-  border-top: 2px solid var(--line);
-  background: #fffdf8;
-  touch-action: none;
+  min-width: 0;
+  scrollbar-width: thin;
+  scroll-behavior: smooth;
 }
 
 @media (orientation: landscape) and (min-width: 720px) {
-  .tray {
+  .tray-wrap {
     flex-direction: column;
     border-top: none;
     border-left: 2px solid var(--line);
   }
+  .tray {
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    min-height: 0;
+  }
 }
 
-/* Tiles divide the tray between them (`flex: 1 1 0`), so six always fit exactly
-   whatever the screen. Hard-coded sizes cannot do this: they either overflow on
-   a small screen or leave the rail half empty on a large one. */
+/* Big, obvious, and always available. A four-year-old's swipe is diagonal and
+   may be claimed by the drag rather than the scroller, so these are the
+   guaranteed route to the far end of the list. */
+.tray-arrow {
+  flex: 0 0 auto;
+  width: 44px;
+  border: none;
+  background: #f3ede0;
+  color: var(--ink);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: none;
+  padding: 0;
+}
+.tray-arrow:disabled { opacity: .25; cursor: default; }
+
+@media (orientation: landscape) and (min-width: 720px) {
+  /* Swap the glyph rather than rotating one. A rotated full-width ::before
+     becomes a full-HEIGHT hit area, and hit-testing follows transforms -- it
+     silently swallowed clicks on the HUD buttons well above the arrow. */
+  .tray-arrow {
+    width: auto;
+    height: 44px;
+    font-size: 0;
+    overflow: hidden;
+  }
+  .tray-arrow::before { font-size: 20px; line-height: 44px; display: block; }
+  #tray-prev::before { content: '▲'; }
+  #tray-next::before { content: '▼'; }
+}
+
+/* Fixed size, because the tray now scrolls through the whole alphabetical list
+   rather than fitting a fixed number of pieces. */
 .tile {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 0;
+  flex: 0 0 auto;
+  width: 104px;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -233,13 +296,26 @@ body {
   background: #fff;
   cursor: grab;
   font: inherit;
-  /* The tile is a full rectangle, so a thin state like Kerala is still easy to
-     grab -- the child never has to hit the polygon itself. */
-  touch-action: none;
+  scroll-snap-align: center;
+
+  /* Directional, not `none`. The geometry disambiguates: in portrait the tray
+     runs along the bottom and a piece is dragged UPWARD onto the map, so
+     allowing horizontal panning lets a sideways swipe scroll the list while a
+     vertical drag still picks the piece up. `none` here would make the list
+     unscrollable, since the tray is nothing but tiles. If the browser does claim
+     a gesture it fires pointercancel, which drag.js handles by returning the
+     piece -- so the worst case is a piece that does not move, never a lost one. */
+  touch-action: pan-x;
 }
 
-/* In the landscape rail the tiles stack, so they divide the height instead --
-   `flex: 1 1 0` on the column axis already does that. Nothing to override. */
+@media (orientation: landscape) and (min-width: 720px) {
+  .tile {
+    width: 100%;
+    height: 108px;
+    /* Rail scrolls vertically; pieces are dragged leftward onto the map. */
+    touch-action: pan-y;
+  }
+}
 
 .tile:focus-visible { outline: 4px solid var(--accent-2); outline-offset: 2px; }
 .tile.taken { visibility: hidden; }
@@ -473,6 +549,8 @@ body.low-fx .ghost  { filter: none; }
 
   <div class="hud-right">
     <p class="progress" id="progress" aria-hidden="true"></p>
+    <button class="icon-btn" id="undo" type="button" aria-label="Undo" disabled>↶</button>
+    <button class="icon-btn" id="redo" type="button" aria-label="Redo" disabled>↷</button>
     <button class="icon-btn" id="mute" type="button" aria-pressed="false" aria-label="Turn sound off">
       <span class="icon-on">🔊</span><span class="icon-off">🔇</span>
     </button>
@@ -483,11 +561,23 @@ body.low-fx .ghost  { filter: none; }
 
 <main class="board-wrap">
   <svg id="board" role="img" aria-label="Map of India with empty spaces for each state"></svg>
+  <div class="zoom-controls">
+    <button class="icon-btn" id="zoom-in" type="button" aria-label="Zoom in">＋</button>
+    <button class="icon-btn" id="zoom-out" type="button" aria-label="Zoom out" disabled>−</button>
+    <button class="icon-btn" id="zoom-reset" type="button" aria-label="Fit the whole map" disabled>⤢</button>
+  </div>
 </main>
 
-<section class="tray" id="tray" role="listbox"
-         aria-label="Pieces to place. Pick one, then drop it on the map.">
-</section>
+<!-- Arrows flank the tray because every pixel of it is a draggable tile: tiles
+     must claim the drag gesture, which leaves nothing to swipe on. The arrows
+     are the guaranteed way to reach the far end of the list. -->
+<div class="tray-wrap">
+  <button class="tray-arrow" id="tray-prev" type="button" aria-label="Show earlier pieces">‹</button>
+  <section class="tray" id="tray" role="listbox"
+           aria-label="Pieces to place, in alphabetical order. Pick one, then drop it on the map.">
+  </section>
+  <button class="tray-arrow" id="tray-next" type="button" aria-label="Show more pieces">›</button>
+</div>
 
 <!-- Announcements for screen readers; also the fallback for anyone who cannot
      hear the spoken state names. -->
@@ -502,6 +592,9 @@ body.low-fx .ghost  { filter: none; }
       <button class="big-btn" type="button" id="again">Play again</button>
       <button class="big-btn ghost-btn" type="button" id="next">Next level</button>
     </div>
+    <!-- Without this the overlay is a dead end: it covers the whole screen, so
+         you cannot admire the map you just finished, and cannot reach undo. -->
+    <button class="win-link" type="button" id="admire">Look at my map</button>
     <button class="win-link" type="button" id="win-stickers">See my stickers ⭐</button>
   </div>
 </div>
@@ -673,12 +766,24 @@ body.low-fx .ghost  { filter: none; }
     return { x: r.x, y: r.y };
   }
 
-  /** Scale factor from viewBox units to CSS pixels for the current layout. */
-  function boardScale(board, viewW, viewH) {
+  /**
+   * Scale factor from viewBox units to CSS pixels, for the board as it is right
+   * now.
+   *
+   * Reads the LIVE viewBox rather than taking the original dimensions as
+   * arguments, because zooming works by rewriting the viewBox. Using the
+   * original constants would size the drag ghost against an unzoomed board, so a
+   * piece picked up while zoomed in would be visibly the wrong size for the slot
+   * it is aimed at.
+   */
+  function boardScale(board) {
     const r = board.getBoundingClientRect();
+    const vb = board.viewBox && board.viewBox.baseVal;
+    const w = vb && vb.width ? vb.width : r.width;
+    const h = vb && vb.height ? vb.height : r.height;
     // preserveAspectRatio="xMidYMid meet" letterboxes, so the effective scale is
     // whichever axis is the tighter fit.
-    return Math.min(r.width / viewW, r.height / viewH);
+    return Math.min(r.width / w, r.height / h);
   }
 
   function debounce(fn, ms) {
@@ -1526,6 +1631,157 @@ window.INDIA_MAP = {
 
 </script>
 <script>
+/* js/zoom.js */
+/* Pan and zoom the map, by rewriting the board's viewBox.
+ *
+ * There is no gesture contention with dragging: pieces are picked up from the
+ * tray and dropped onto the board, never dragged off it, so a one-finger drag on
+ * the board itself is unused and can pan. Two fingers pinch.
+ *
+ * Hit-testing needs no changes at all. IMP.util.toViewBox goes through
+ * getScreenCTM(), which reflects whatever the viewBox currently is, and the snap
+ * radii are expressed in viewBox units -- so they are zoom-independent by
+ * construction.
+ */
+(function (IMP) {
+  'use strict';
+
+  const MIN = 1;      // 1 = the whole map; never zoom out past it
+  const MAX = 4;
+  const STEP = 1.5;   // per button press
+
+  let board = null;
+  let base = null;    // the level's original viewBox, i.e. scale 1
+  let view = null;    // current viewBox
+  let onChange = null;
+
+  // Active pointers on the board, by id, for pinch tracking.
+  const points = new Map();
+  let pinchStart = null;
+
+  const clamp = (n, lo, hi) => (n < lo ? lo : n > hi ? hi : n);
+
+  function scale() {
+    return base && view ? base.w / view.w : 1;
+  }
+
+  /** Keep the visible window inside the map, so it cannot be lost off-screen. */
+  function commit() {
+    view.w = clamp(view.w, base.w / MAX, base.w);
+    view.h = clamp(view.h, base.h / MAX, base.h);
+    view.x = clamp(view.x, base.x, base.x + base.w - view.w);
+    view.y = clamp(view.y, base.y, base.y + base.h - view.h);
+    board.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+    if (onChange) onChange(scale());
+  }
+
+  /** Zoom by a factor, holding the given viewBox point still on screen. */
+  function zoomAt(factor, fx, fy) {
+    if (!base) return;
+    const next = clamp(scale() * factor, MIN, MAX);
+    const w = base.w / next;
+    const h = base.h / next;
+    // Keep (fx, fy) at the same fractional position within the window.
+    const rx = view.w ? (fx - view.x) / view.w : 0.5;
+    const ry = view.h ? (fy - view.y) / view.h : 0.5;
+    view.x = fx - rx * w;
+    view.y = fy - ry * h;
+    view.w = w;
+    view.h = h;
+    commit();
+  }
+
+  const centre = () => [view.x + view.w / 2, view.y + view.h / 2];
+
+  function zoomIn() { const c = centre(); zoomAt(STEP, c[0], c[1]); }
+  function zoomOut() { const c = centre(); zoomAt(1 / STEP, c[0], c[1]); }
+
+  function reset() {
+    if (!base) return;
+    view = { x: base.x, y: base.y, w: base.w, h: base.h };
+    commit();
+  }
+
+  /** Called by game.js whenever a level (re)starts. */
+  function setBase(vb) {
+    base = { x: vb[0], y: vb[1], w: vb[2], h: vb[3] };
+    reset();
+  }
+
+  // --- gestures -----------------------------------------------------------
+
+  function toView(e) {
+    return IMP.util.toViewBox(board, e.clientX, e.clientY);
+  }
+
+  function onPointerDown(e) {
+    if (!base) return;
+    points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (points.size === 2) {
+      const [a, b] = [...points.values()];
+      pinchStart = {
+        dist: Math.hypot(a.x - b.x, a.y - b.y),
+        scale: scale(),
+        mid: IMP.util.toViewBox(board, (a.x + b.x) / 2, (a.y + b.y) / 2),
+      };
+    }
+    try { board.setPointerCapture(e.pointerId); } catch (err) { /* optional */ }
+  }
+
+  function onPointerMove(e) {
+    if (!base || !points.has(e.pointerId)) return;
+
+    const prev = points.get(e.pointerId);
+    points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (points.size >= 2 && pinchStart) {
+      const [a, b] = [...points.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinchStart.dist > 0) {
+        const target = clamp(pinchStart.scale * (dist / pinchStart.dist), MIN, MAX);
+        zoomAt(target / scale(), pinchStart.mid.x, pinchStart.mid.y);
+      }
+      return;
+    }
+
+    // Single pointer: pan. Convert the pixel delta into viewBox units.
+    if (scale() <= 1) return;             // nothing to pan when fully zoomed out
+    const k = board.getBoundingClientRect().width / view.w;
+    view.x -= (e.clientX - prev.x) / k;
+    view.y -= (e.clientY - prev.y) / k;
+    commit();
+  }
+
+  function onPointerUp(e) {
+    points.delete(e.pointerId);
+    if (points.size < 2) pinchStart = null;
+    try { board.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  }
+
+  function onWheel(e) {
+    if (!base) return;
+    e.preventDefault();
+    const p = toView(e);
+    zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, p.x, p.y);
+  }
+
+  function attach(boardEl, changeCb) {
+    board = boardEl;
+    onChange = changeCb || null;
+
+    board.addEventListener('pointerdown', onPointerDown);
+    board.addEventListener('pointermove', onPointerMove);
+    board.addEventListener('pointerup', onPointerUp);
+    board.addEventListener('pointercancel', onPointerUp);
+    board.addEventListener('lostpointercapture', onPointerUp);
+    board.addEventListener('wheel', onWheel, { passive: false });
+  }
+
+  IMP.zoom = { attach, setBase, zoomIn, zoomOut, reset, scale, MIN, MAX };
+})((window.IMP = window.IMP || {}));
+
+</script>
+<script>
 /* js/drag.js */
 /* Dragging, with Pointer Events.
  *
@@ -1590,7 +1846,7 @@ window.INDIA_MAP = {
       /* capture is an optimisation, not a requirement */
     }
 
-    const scale = boardScale(board, IMP.render.VW, IMP.render.VH) * state.minScale;
+    const scale = boardScale(board) * state.minScale;
     const pad = CFG.PIECE_PAD;
     const [x0, y0, x1, y1] = state.bbox;
     const w = (x1 - x0 + pad * 2) * scale;
@@ -1771,58 +2027,89 @@ window.INDIA_MAP = {
   'use strict';
 
   const CFG = IMP.config;
-  const { shuffle } = IMP.util;
   const M = window.INDIA_MAP;
 
   const dom = {};
 
   let level = 1;
   let active = [];       // states in this level
-  let queue = [];        // not yet shown in the tray
   let placedPaths = {};
   let placedCount = 0;
   const misses = {};     // state id -> wrong drops, drives the escalating hints
+  const undoStack = [];
+  const redoStack = [];
 
   // --- tray ---------------------------------------------------------------
 
-  /**
-   * Refill the tray up to TRAY_MAX.
-   *
-   * The "always keep one big piece visible" rule is the important part: a tray
-   * showing only Goa, Sikkim and Tripura is a tray with no achievable win on it,
-   * and that is where a four-year-old gives up.
-   */
-  function refillTray() {
-    const shown = dom.tray.querySelectorAll('.tile').length;
-    let need = CFG.TRAY_MAX - shown;
-    if (need <= 0 || !queue.length) return;
+  const byName = function (a, b) { return a.name.localeCompare(b.name); };
 
-    const bigOnScreen = Array.prototype.some.call(
-      dom.tray.querySelectorAll('.tile'),
-      function (t) {
-        const s = IMP.render.byId[t.dataset.id];
-        return s && s.minScale === 1;
-      }
-    );
+  function makeTile(state) {
+    const tile = IMP.render.buildTile(state);
+    IMP.drag.bindTile(tile, state);
+    return tile;
+  }
 
-    while (need > 0 && queue.length) {
-      let idx = 0;
-      if (!bigOnScreen && dom.tray.querySelectorAll('.tile').length === 0) {
-        const big = queue.findIndex(function (s) { return s.minScale === 1; });
-        if (big > -1) idx = big;
-      }
-      const state = queue.splice(idx, 1)[0];
-      const tile = IMP.render.buildTile(state);
-      IMP.drag.bindTile(tile, state);
-      dom.tray.appendChild(tile);
-      need--;
-    }
+  /** Fill the tray with every unplaced piece, in alphabetical order. */
+  function fillTray(states) {
+    dom.tray.innerHTML = '';
+    states.slice().sort(byName).forEach(function (s) {
+      dom.tray.appendChild(makeTile(s));
+    });
     updateRovingTabindex();
+    updateArrows();
+  }
+
+  /**
+   * Put a tile back where it belongs alphabetically. Undo would otherwise append
+   * it to the end, which is the one thing an ordered list must not do.
+   */
+  function insertTileSorted(state) {
+    const tile = makeTile(state);
+    const existing = Array.prototype.slice.call(dom.tray.querySelectorAll('.tile'));
+    const after = existing.find(function (t) {
+      const s = IMP.render.byId[t.dataset.id];
+      return s && byName(s, state) > 0;
+    });
+    dom.tray.insertBefore(tile, after || null);
+    updateRovingTabindex();
+    updateArrows();
+    return tile;
+  }
+
+  // --- tray scrolling -----------------------------------------------------
+
+  const isRail = function () {
+    return getComputedStyle(dom.tray).flexDirection === 'column';
+  };
+
+  function scrollTray(dir) {
+    const rail = isRail();
+    const amount = (rail ? dom.tray.clientHeight : dom.tray.clientWidth) * 0.8;
+    dom.tray.scrollBy(
+      rail ? { top: dir * amount, behavior: 'smooth' }
+           : { left: dir * amount, behavior: 'smooth' }
+    );
+  }
+
+  function updateArrows() {
+    if (!dom.prev) return;
+    const rail = isRail();
+    const pos = rail ? dom.tray.scrollTop : dom.tray.scrollLeft;
+    const max = rail
+      ? dom.tray.scrollHeight - dom.tray.clientHeight
+      : dom.tray.scrollWidth - dom.tray.clientWidth;
+    dom.prev.disabled = pos <= 1;
+    dom.next.disabled = pos >= max - 1;
+    // Nothing to scroll at all: hide rather than show two dead buttons.
+    const scrollable = max > 1;
+    dom.prev.hidden = !scrollable;
+    dom.next.hidden = !scrollable;
   }
 
   // --- placement ----------------------------------------------------------
 
-  function onPlace(state) {
+  function applyPlacement(state, opts) {
+    const o = opts || {};
     const path = placedPaths[state.id];
     if (path) {
       path.setAttribute('opacity', '1');
@@ -1841,14 +2128,69 @@ window.INDIA_MAP = {
     IMP.speech.sayState(state, 'PLACED');
     announce(state.name + ' placed. ' + placedCount + ' of ' + active.length + ' done.');
 
-    if (IMP.store.earnSticker(state.id)) {
-      /* first time this state has ever been placed -- sticker book grows */
-    }
+    // Stickers record states ever placed. Deliberately never revoked by undo --
+    // the book is a permanent collection, and taking one back for pressing undo
+    // would be a punishment in a game built to have none. earnSticker is
+    // idempotent, so redo is a no-op here.
+    IMP.store.earnSticker(state.id);
 
     updateProgress();
-    refillTray();
+    updateArrows();
 
+    if (placedCount === active.length && !o.silent) setTimeout(win, 420);
+  }
+
+  function revertPlacement(state) {
+    const path = placedPaths[state.id];
+    if (path) {
+      path.setAttribute('opacity', '0');
+      if (path._group) path._group.setAttribute('opacity', '0');
+    }
+
+    const slot = dom.board.querySelector('.slot[data-id="' + state.id + '"]');
+    if (slot) slot.style.opacity = '';
+
+    placedCount--;
+    insertTileSorted(state);
+    updateProgress();
+
+    // Undoing after finishing should take the celebration away with it.
+    dom.win.hidden = true;
+    IMP.effects.clear();
+
+    announce(state.name + ' put back. ' + placedCount + ' of ' + active.length + ' done.');
+  }
+
+  function onPlace(state) {
+    undoStack.push(state);
+    redoStack.length = 0;
+    applyPlacement(state);
+    updateHistoryButtons();
+  }
+
+  function undo() {
+    const state = undoStack.pop();
+    if (!state) return;
+    redoStack.push(state);
+    revertPlacement(state);
+    updateHistoryButtons();
+  }
+
+  function redo() {
+    const state = redoStack.pop();
+    if (!state) return;
+    undoStack.push(state);
+    const tile = dom.tray.querySelector('.tile[data-id="' + state.id + '"]');
+    if (tile) tile.remove();
+    // silent: replaying a placement should not re-run the whole win fanfare.
+    applyPlacement(state, { silent: true });
     if (placedCount === active.length) setTimeout(win, 420);
+    updateHistoryButtons();
+  }
+
+  function updateHistoryButtons() {
+    dom.undo.disabled = undoStack.length === 0;
+    dom.redo.disabled = redoStack.length === 0;
   }
 
   function onMiss(state) {
@@ -1866,17 +2208,19 @@ window.INDIA_MAP = {
     IMP.store.setSetting('level', level);
 
     active = M.states.filter(function (s) { return s.level <= level; });
-    queue = shuffle(active.slice());
     placedCount = 0;
     for (const k in misses) delete misses[k];
+    undoStack.length = 0;
+    redoStack.length = 0;
 
     placedPaths = IMP.render.buildBoard(dom.board, active);
-    dom.tray.innerHTML = '';
     dom.win.hidden = true;
     IMP.effects.clear();
+    IMP.zoom.setBase(M.viewBox);
 
-    refillTray();
+    fillTray(active);
     updateProgress();
+    updateHistoryButtons();
 
     Array.prototype.forEach.call(dom.chips, function (chip) {
       chip.setAttribute('aria-selected', String(+chip.dataset.level === level));
@@ -1975,6 +2319,13 @@ window.INDIA_MAP = {
     dom.next = document.getElementById('next');
     dom.again = document.getElementById('again');
     dom.chips = document.querySelectorAll('.chip');
+    dom.undo = document.getElementById('undo');
+    dom.redo = document.getElementById('redo');
+    dom.prev = document.getElementById('tray-prev');
+    dom.next = document.getElementById('tray-next');
+    dom.zoomIn = document.getElementById('zoom-in');
+    dom.zoomOut = document.getElementById('zoom-out');
+    dom.zoomReset = document.getElementById('zoom-reset');
 
     // Weak devices get the flat style: 36 drop-shadowed paths is where a cheap
     // tablet starts dropping frames.
@@ -2004,16 +2355,40 @@ window.INDIA_MAP = {
     });
 
     dom.again.addEventListener('click', function () { startLevel(level); });
+    document.getElementById('admire').addEventListener('click', function () {
+      dom.win.hidden = true;
+      IMP.effects.clear();
+    });
     dom.next.addEventListener('click', function () {
       startLevel(Math.min(3, level + 1));
     });
 
     dom.tray.addEventListener('keydown', onTrayKey);
+    dom.tray.addEventListener('scroll', IMP.util.debounce(updateArrows, 80));
 
-    window.addEventListener(
-      'resize',
-      IMP.util.debounce(function () { /* board rescales itself via viewBox */ }, 120)
-    );
+    dom.undo.addEventListener('click', undo);
+    dom.redo.addEventListener('click', redo);
+    dom.prev.addEventListener('click', function () { scrollTray(-1); });
+    dom.next.addEventListener('click', function () { scrollTray(1); });
+
+    // Costs nothing and helps the adult sitting alongside.
+    document.addEventListener('keydown', function (e) {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    });
+
+    IMP.zoom.attach(dom.board, function (scale) {
+      dom.zoomIn.disabled = scale >= IMP.zoom.MAX - 0.01;
+      dom.zoomOut.disabled = scale <= IMP.zoom.MIN + 0.01;
+      dom.zoomReset.disabled = scale <= IMP.zoom.MIN + 0.01;
+    });
+    dom.zoomIn.addEventListener('click', IMP.zoom.zoomIn);
+    dom.zoomOut.addEventListener('click', IMP.zoom.zoomOut);
+    dom.zoomReset.addEventListener('click', IMP.zoom.reset);
+
+    window.addEventListener('resize', IMP.util.debounce(updateArrows, 120));
 
     startLevel(settings.level && settings.level <= 3 ? settings.level : 1);
 
@@ -2026,8 +2401,16 @@ window.INDIA_MAP = {
         onPlace(IMP.render.byId[id]);
       },
       state: function () {
-        return { level, placed: placedCount, total: active.length };
+        return {
+          level,
+          placed: placedCount,
+          total: active.length,
+          undo: undoStack.length,
+          redo: redoStack.length,
+        };
       },
+      undo,
+      redo,
     };
   }
 
