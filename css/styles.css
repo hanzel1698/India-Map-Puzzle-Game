@@ -506,6 +506,17 @@ body.book-page {
 body.low-fx .placed { filter: none !important; }
 body.low-fx .ghost  { filter: none; }
 
+/* While a finger is on the map, drop the per-frame paint cost.
+   Rewriting the viewBox re-rasterizes the whole SVG, and up to 36 placed pieces
+   each carry an feDropShadow -- filtered paths are re-rasterized on the CPU, so
+   at 36 pieces that is by far the most expensive thing on screen. Nobody
+   perceives a drop shadow mid-pan; it returns the instant the finger lifts.
+   CSS filter overrides the SVG presentation attribute, so no JS is needed. */
+body.panning .placed { filter: none !important; }
+body.panning .slot.nudge .slot-halo,
+body.panning .slot.nudge > path,
+body.panning .slot.nudge .slot-emoji { animation: none; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .01ms !important;

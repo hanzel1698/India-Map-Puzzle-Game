@@ -783,3 +783,126 @@ test.describe('zoom', () => {
     await context.close();
   });
 });
+
+// ---------------------------------------------------------------------------
+
+test.describe('panning performance', () => {
+  /** Instrument the board: count viewBox writes and geometry reads. */
+  const instrument = (page) =>
+    page.addInitScript(() => {
+      window.__perf = { writes: 0, rects: 0, gesture: false };
+      const origSet = Element.prototype.setAttribute;
+      Element.prototype.setAttribute = function (name, value) {
+        if (this.id === 'board' && name === 'viewBox') window.__perf.writes++;
+        return origSet.call(this, name, value);
+      };
+      const origRect = Element.prototype.getBoundingClientRect;
+      Element.prototype.getBoundingClientRect = function () {
+        if (this.id === 'board' && window.__perf.gesture) window.__perf.rects++;
+        return origRect.call(this);
+      };
+    });
+
+  test('coalesces viewBox writes to about one per frame', async ({ page }) => {
+    await instrument(page);
+    await page.goto(FILE_URL);
+    await page.click('#zoom-in');           // must be zoomed in for panning to do anything
+    await page.waitForTimeout(100);
+
+    const result = await page.evaluate(async () => {
+      const board = document.getElementById('board');
+      const r = board.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const opts = { pointerId: 1, pointerType: 'touch', bubbles: true, isPrimary: true };
+
+      board.dispatchEvent(new PointerEvent('pointerdown', { ...opts, clientX: cx, clientY: cy }));
+
+      // Start counting only after pointerdown: measuring the board once, there,
+      // is the whole point -- what must not happen is a read during the moves.
+      window.__perf.writes = 0;
+      window.__perf.rects = 0;
+      window.__perf.gesture = true;
+
+      const MOVES = 40;
+      for (let i = 1; i <= MOVES; i++) {
+        board.dispatchEvent(new PointerEvent('pointermove', {
+          ...opts, clientX: cx - i, clientY: cy - i,
+        }));
+      }
+      // Let any scheduled frame run.
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+
+      const during = { writes: window.__perf.writes, rects: window.__perf.rects };
+      board.dispatchEvent(new PointerEvent('pointerup', { ...opts, clientX: cx - MOVES, clientY: cy - MOVES }));
+      window.__perf.gesture = false;
+      return { ...during, moves: MOVES };
+    });
+
+    // 40 synchronous moves span at most a frame or two. Before this fix every
+    // move wrote the viewBox and forced a synchronous layout.
+    expect(result.writes).toBeLessThanOrEqual(4);
+    expect(result.writes).toBeGreaterThan(0);
+
+    // And no geometry read while the finger moves -- reading the board rect with
+    // a viewBox write pending is what forced a synchronous layout every move.
+    expect(result.rects).toBe(0);
+  });
+
+  test('marks the body while panning, and clears it even if the gesture is cancelled', async ({ page }) => {
+    await page.goto(FILE_URL);
+    await page.click('#zoom-in');
+
+    const states = await page.evaluate(async () => {
+      const board = document.getElementById('board');
+      const r = board.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const opts = { pointerId: 7, pointerType: 'touch', bubbles: true, isPrimary: true };
+
+      board.dispatchEvent(new PointerEvent('pointerdown', { ...opts, clientX: cx, clientY: cy }));
+      const during = document.body.classList.contains('panning');
+      // pointercancel, not pointerup: a gesture the browser steals must not
+      // strand the map without its shadows.
+      board.dispatchEvent(new PointerEvent('pointercancel', { ...opts, clientX: cx, clientY: cy }));
+      const after = document.body.classList.contains('panning');
+      return { during, after };
+    });
+
+    expect(states.during).toBe(true);
+    expect(states.after).toBe(false);
+  });
+
+  test('panning moves the map but cannot push it out of view', async ({ page }) => {
+    await page.goto(FILE_URL);
+    await page.click('#zoom-in');
+    await page.waitForTimeout(100);
+    const before = await page.getAttribute('#board', 'viewBox');
+
+    const after = await page.evaluate(async () => {
+      const board = document.getElementById('board');
+      const r = board.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const opts = { pointerId: 3, pointerType: 'touch', bubbles: true, isPrimary: true };
+
+      board.dispatchEvent(new PointerEvent('pointerdown', { ...opts, clientX: cx, clientY: cy }));
+      // Shove far past the edge of the map in both axes.
+      for (let i = 1; i <= 20; i++) {
+        board.dispatchEvent(new PointerEvent('pointermove', {
+          ...opts, clientX: cx + i * 200, clientY: cy + i * 200,
+        }));
+        await new Promise((res) => requestAnimationFrame(res));
+      }
+      board.dispatchEvent(new PointerEvent('pointerup', { ...opts, clientX: cx, clientY: cy }));
+      await new Promise((res) => requestAnimationFrame(res));
+      return board.getAttribute('viewBox');
+    });
+
+    expect(after).not.toBe(before);
+
+    const [x, y, w, h] = after.split(/\s+/).map(Number);
+    const [, , baseW, baseH] = await page.evaluate(() => window.INDIA_MAP.viewBox);
+    expect(x).toBeGreaterThanOrEqual(-0.5);
+    expect(y).toBeGreaterThanOrEqual(-0.5);
+    expect(x + w).toBeLessThanOrEqual(baseW + 0.5);
+    expect(y + h).toBeLessThanOrEqual(baseH + 0.5);
+  });
+});
